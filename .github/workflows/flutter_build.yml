@@ -10,13 +10,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: chat_yemen_2026_pro_final
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Extract zip file
+        run: |
+          unzip chat_yemen_2026_pro_finall.zip -d extracted_project
+          # البحث عن المجلد الذي يحتوي على pubspec.yaml وتعديل المسارات
+          PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
+          echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -30,13 +33,17 @@ jobs:
           channel: 'stable'
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: chat_yemen_2026_pro_final/build/app/outputs/flutter-apk/app-release.apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
