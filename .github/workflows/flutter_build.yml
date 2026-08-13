@@ -23,17 +23,11 @@ jobs:
       - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          # إصلاح تعارضات المكتبات وإعادةCryptography لإصدار متوافق مع الكود القديم
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           
-          # إجبار cryptography على استخدام الإصدار v2.0.5 المتوافق مع AesCbcWithPkcs7
-          if grep -q "cryptography:" pubspec.yaml; then
-            sed -i 's/cryptography:.*/cryptography: ^2.0.5/g' pubspec.yaml
-          else
-            echo "  cryptography: ^2.0.5" >> pubspec.yaml
-          fi
-          
+          # استبدال اصدار cryptography بشكل صحيح داخل مجلد الاعتماديات
+          sed -i 's/cryptography:.*/cryptography: 2.0.5/g' pubspec.yaml
           rm -f pubspec.lock
 
       - name: Set up Java
@@ -51,6 +45,7 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
+          flutter pub add cryptography:2.0.5
           flutter pub get
 
       - name: Build APK
