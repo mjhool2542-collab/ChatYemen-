@@ -23,7 +23,6 @@ jobs:
       - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          # تعديل الحزمة المشاكسة nearby_connections وتخفيف قيود riverpod
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
@@ -39,9 +38,10 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Install dependencies
+      - name: Install dependencies & Repairs Android files
         run: |
           cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
           flutter pub get
 
       - name: Build APK
