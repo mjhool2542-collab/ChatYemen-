@@ -23,8 +23,8 @@ jobs:
       - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          # استبدال اصدار nearby_connections الاصطناعي بإصدار any لمنع التعارض
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
+          rm -f pubspec.lock
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -35,6 +35,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.19.6'
           channel: 'stable'
 
       - name: Install dependencies
