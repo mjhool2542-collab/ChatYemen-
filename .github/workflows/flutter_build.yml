@@ -17,9 +17,14 @@ jobs:
       - name: Extract zip file
         run: |
           unzip chat_yemen_2026_pro_finall.zip -d extracted_project
-          # البحث عن المجلد الذي يحتوي على pubspec.yaml وتعديل المسارات
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
+
+      - name: Fix pubspec dependencies
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          # استبدال اصدار nearby_connections الاصطناعي بإصدار any لمنع التعارض
+          sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
 
       - name: Set up Java
         uses: actions/setup-java@v4
