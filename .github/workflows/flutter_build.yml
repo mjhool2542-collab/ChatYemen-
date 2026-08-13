@@ -20,12 +20,19 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix pubspec dependencies
+      - name: Fix pubspec and encryption code
         run: |
           cd ${{ env.PROJECT_DIR }}
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
+          
+          # إصلاح مسميات حزمة التشفير في كود Dart تلقائياً
+          FILE="lib/services/encryption_service.dart"
+          if [ -f "$FILE" ]; then
+            sed -i 's/AesCbcWithPkcs7/AesCbc.with256bits/g' "$FILE"
+            sed -i 's/Nonce(/SecretKey(/g' "$FILE"
+          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -47,7 +54,7 @@ jobs:
       - name: Build APK
         run: |
           cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release
+          flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
