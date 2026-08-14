@@ -1,28 +1,23 @@
 name: Flutter Build & Release
-
 on:
   push:
     branches: [ "main", "master" ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Extract zip file
         run: |
           unzip chat_yemen_2026_pro_finall.zip -d extracted_project
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \; | head -n 1)
           [ -z "$PROJ_DIR" ] && echo "pubspec.yaml not found" && exit 1
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
-
       - name: Fix dependencies + assets + icon
         run: |
           cd ${{ env.PROJECT_DIR }}
           mkdir -p assets/images
           echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" | base64 -d > assets/images/icon.png
-          
           python3 << 'EOF'
           with open('pubspec.yaml', 'r', encoding='utf-8') as f: content = f.read()
           deps = {'qr_flutter':'^4.1.0','mobile_scanner':'^5.0.0','permission_handler':'^11.3.0','network_info_plus':'^5.0.1'}
@@ -36,33 +31,21 @@ jobs:
           with open('pubspec.yaml', 'w', encoding='utf-8') as f: f.write(content)
           EOF
           rm -f pubspec.lock
-
       - name: Inject Permissions once
         run: |
           cd ${{ env.PROJECT_DIR }}
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ] && ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
-            sed -i '/<manifest/a\
-            <uses-permission android:name="android.permission.INTERNET" />\
-            <uses-permission android:name="android.permission.CAMERA" />\
-            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\
-            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
-            <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' "$MANIFEST"
+            sed -i '/<manifest/a\<uses-permission android:name="android.permission.INTERNET" />\<uses-permission android:name="android.permission.CAMERA" />\<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' "$MANIFEST"
           fi
-
       - uses: actions/setup-java@v4
         with: {distribution: 'zulu', java-version: '17'}
-
       - uses: subosito/flutter-action@v2
         with: {channel: 'stable', flutter-version: '3.22.0'}
-
-      - name: Set minSdk 21
-        run: sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' ${{ env.PROJECT_DIR }}/android/app/build.gradle
-
+      - run: sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' ${{ env.PROJECT_DIR }}/android/app/build.gradle
       - run: cd ${{ env.PROJECT_DIR }} && flutter pub get
       - run: cd ${{ env.PROJECT_DIR }} && flutter pub run flutter_launcher_icons
       - run: cd ${{ env.PROJECT_DIR }} && flutter build apk --release
-
       - uses: actions/upload-artifact@v4
         with:
           name: release-apk
