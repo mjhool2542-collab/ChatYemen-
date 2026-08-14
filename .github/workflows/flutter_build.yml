@@ -20,18 +20,33 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix dependencies and patch encryption code
+      - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          
-          # 1. إزالة قيود الحزم التي تسبب تعارض
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-          # 2. البحث عن ملف التشفير وتعديله أينما كان مساره
-          find . -name "encryption_service.dart" -exec sed -i 's/AesCbcWithPkcs7/AesCbc.with256bits/g' {} +
-          find . -name "encryption_service.dart" -exec sed -i 's/Nonce/SecretKey/g' {} +
+      - name: Patch encryption_service.dart using Python
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob, re
+
+          files = glob.glob('**/encryption_service.dart', recursive=True)
+          for path in files:
+              with open(path, 'r', encoding='utf-8') as f:
+                  code = f.read()
+              
+              # إزالة المعاملات الخاطئة متعددة الأسطر داخل أقواس AesCbc
+              code = re.sub(r'AesCbcWithPkcs7\s*\([\s\S]*?\)', 'AesCbc.with256bits()', code)
+              code = re.sub(r'AesCbc\.with256bits\s*\([\s\S]*?\)', 'AesCbc.with256bits()', code)
+              code = re.sub(r'\bNonce\b', 'SecretKey', code)
+              
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(code)
+              print(f'Patched: {path}')
+          "
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -53,10 +68,6 @@ jobs:
       - name: Build APK
         run: |
           cd ${{ env.PROJECT_DIR }}
-          
-          # تعديل ثانوي إضافي لتصحيح المعاملات إن وجدت قبل البناء مباشرة
-          find . -name "encryption_service.dart" -exec sed -i 's/AesCbc.with256bits([^)]*)/AesCbc.with256bits()/g' {} +
-          
           flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
