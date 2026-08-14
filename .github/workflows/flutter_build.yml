@@ -23,30 +23,13 @@ jobs:
       - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
+          # 1. إصلاح قيود الحزم العادية
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
+          
+          # 2. إجبار المشروع على استخدام الإصدار v2.0.5 المستقر بدون تعديل في الكود البرمجي
+          sed -i 's/cryptography:.*/cryptography: 2.0.5/g' pubspec.yaml
           rm -f pubspec.lock
-
-      - name: Convert encryption code to Cryptography v2 API
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import glob, re
-
-          files = glob.glob('**/encryption_service.dart', recursive=True)
-          for path in files:
-              with open(path, 'r', encoding='utf-8') as f:
-                  code = f.read()
-              
-              # تحويل استدعاءات الكلاسات القديمة إلى V2 API الصحيحة
-              code = re.sub(r'AesCbcWithPkcs7\s*\([^)]*\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-              code = re.sub(r'AesCbcWithPkcs7', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-              code = re.sub(r'\bNonce\b', 'SecretKey', code)
-              
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(code)
-              print(f'Successfully updated: {path}')
-          "
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -63,6 +46,7 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
+          flutter pub downgrade cryptography
           flutter pub get
 
       - name: Build APK
