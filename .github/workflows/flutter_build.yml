@@ -27,7 +27,7 @@ jobs:
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # 1. إصلاح حل التبعيات وتعديل الإصدارات المتعارضة
+          # إصلاح التبعيات المتعارضة
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('flutter_riverpod: ^3.0.0', 'flutter_riverpod: ^2.5.1')
@@ -35,7 +35,7 @@ jobs:
           content = content.replace('build_runner: ^2.4.8', 'build_runner: ^2.4.6')
           content = content.replace('build_runner: 2.4.8', 'build_runner: ^2.4.6')
 
-          # 2. إضافة جميع مكتبات الميزات الجديدة بطريقة آمنة يمنع التكرار
+          # إضافة المكتبات المطلوبة للخصائص الجديدة
           deps_to_add = []
           for lib, ver in [
               ('qr_flutter', '^4.1.0'),
@@ -50,23 +50,18 @@ jobs:
               new_deps = 'dependencies:\n' + '\n'.join(deps_to_add)
               content = content.replace('dependencies:', new_deps)
 
-          # 3. إعداد إيقونة التطبيق في dev_dependencies
-          if 'flutter_launcher_icons:' not in content:
-              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
-
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
           "
           rm -f pubspec.lock
-          mkdir -p assets/images assets/icons
 
-      - name: Force Android Compile SDK 36 on Root and Sub-projects
+      - name: Force Android Compile SDK 36 Globally
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
-          import glob, re
+          import os, glob, re
 
-          # رفع compileSdk و targetSdk لجميع المكتبات والمشروع الرئيسي إلى 36
+          # 1. تعديل كافة ملفات build.gradle الموجودة في المشروع
           for file_path in glob.glob('**/build.gradle*', recursive=True):
               try:
                   with open(file_path, 'r', encoding='utf-8') as f:
@@ -203,29 +198,32 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
           
-          # فرض compileSdk 36 على حزم Gradle الفرعية المستوردة عبر pub
-          mkdir -p android
+          # فرض compileSdk 36 مباشرة في جذر Gradle للمشروع والـ Plugins الحزمية
           python3 -c "
           import os
-          build_gradle_path = 'android/build.gradle'
-          gradle_subproject_force = '''
+          root_gradle = 'android/build.gradle'
+          if os.path.exists(root_gradle):
+              with open(root_gradle, 'r', encoding='utf-8') as f:
+                  g_content = f.read()
+              
+              sub_config = '''
           subprojects {
               afterEvaluate { project ->
                   if (project.hasProperty('android')) {
                       project.android {
                           compileSdkVersion 36
+                          buildToolsVersion '34.0.0'
                       }
                   }
               }
           }
           '''
-          if os.path.exists(build_gradle_path):
-              with open(build_gradle_path, 'a', encoding='utf-8') as f:
-                  f.write(gradle_subproject_force)
+              if 'subprojects' not in g_content:
+                  with open(root_gradle, 'a', encoding='utf-8') as f:
+                      f.write(sub_config)
           "
           
           flutter pub get
-          dart run flutter_launcher_icons || true
           flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK
