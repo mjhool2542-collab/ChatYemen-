@@ -9,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,30 +19,20 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix pubspec dependencies & Assets
+      - name: Fix dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
-          sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
-          
-          # إضافة جميع المكتبات اللازمة للـ QR والسرعة العالية وتحديث الأيقونة
           python3 -c "
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
           
-          needed_deps = '''
-  qr_flutter: ^4.1.0
-  mobile_scanner: ^5.0.0
-  permission_handler: ^11.3.0
-  network_info_plus: ^5.0.1
-'''
+          # إضافات المكتبات
           if 'qr_flutter' not in content:
-              content = content.replace('dependencies:', 'dependencies:' + needed_deps)
+              content = content.replace('dependencies:', 'dependencies:\n  qr_flutter: ^4.1.0\n  mobile_scanner: ^5.0.0\n  permission_handler: ^11.3.0\n  network_info_plus: ^5.0.1')
           
-          if 'dev_dependencies:' in content and 'flutter_launcher_icons:' not in content:
-              content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
-          elif 'flutter_launcher_icons:' not in content:
-              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n'
+          # إضافة الأيقونات
+          if 'flutter_launcher_icons:' not in content:
+              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
           
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
@@ -51,62 +40,35 @@ jobs:
           rm -f pubspec.lock
           mkdir -p assets/images assets/icons
 
-      - name: Inject App Icon Configuration
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os, glob
-
-          image_files = glob.glob('assets/images/*.*')
-          icon_path = 'assets/images/icon.png'
-          if image_files:
-              icon_path = image_files[0]
-              print(f'Found image for icon: {icon_path}')
-
-          icon_config = f'''
-flutter_launcher_icons:
-  android: \"launcher_icon\"
-  ios: true
-  image_path: \"{icon_path}\"
-  min_sdk_android: 21
-'''
-          with open('pubspec.yaml', 'a', encoding='utf-8') as f:
-              f.write(icon_config)
-          "
-
-      - name: Inject Full Android Permissions
+      - name: Inject Permissions
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
           import os
-
-          manifest_path = 'android/app/src/main/AndroidManifest.xml'
-          if os.path.exists(manifest_path):
-              with open(manifest_path, 'r', encoding='utf-8') as f:
+          path = 'android/app/src/main/AndroidManifest.xml'
+          if os.path.exists(path):
+              with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
-              
-              permissions = '''
-              <uses-permission android:name=\"android.permission.INTERNET\" />
-              <uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\" />
-              <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />
-              <uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\" />
-              <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />
-              <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
-              <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />
-              <uses-permission android:name=\"android.permission.NEARBY_WIFI_DEVICES\" />
-              <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />
-              <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />
-              <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
-              <uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\" />
-              <uses-permission android:name=\"android.permission.READ_MEDIA_AUDIO\" />
-              <uses-permission android:name=\"android.permission.CAMERA\" />
-              <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />
-              '''
-              
-              if '<uses-permission' not in content:
-                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + permissions)
-                  with open(manifest_path, 'w', encoding='utf-8') as f:
+              perms = '<uses-permission android:name=\"android.permission.INTERNET\" />\n<uses-permission android:name=\"android.permission.CAMERA\" />\n<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />'
+              if 'INTERNET' not in content:
+                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + perms)
+                  with open(path, 'w', encoding='utf-8') as f:
                       f.write(content)
+          "
+
+      - name: Build and Setup
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+          dart run flutter_launcher_icons || true
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-yemen-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           "
 
       - name: Rewrite encryption_service.dart cleanly
