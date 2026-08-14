@@ -27,30 +27,79 @@ jobs:
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-      - name: Cleanly Patch encryption_service.dart
+      - name: Rewrite encryption_service.dart cleanly with Python
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
-          import glob, re
+          import glob
+
+          complete_code = '''import 'dart:convert';
+          import 'dart:typed_data';
+          import 'dart:math';
+          import 'package:cryptography/cryptography.dart';
+
+          class EncryptionService {
+            static final _algorithm = AesCbc.with256bits(macAlgorithm: Hmac.sha256());
+
+            static String generateKey() {
+              final random = Random.secure();
+              final values = List<int>.generate(32, (i) => random.nextInt(256));
+              return base64.encode(values);
+            }
+
+            static Future<String> encryptText(String text, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = await _algorithm.encrypt(
+                utf8.encode(text),
+                secretKey: secretKey,
+              );
+              return base64.encode(secretBox.concatenation());
+            }
+
+            static Future<String> decryptText(String encryptedText, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final bytes = base64.decode(encryptedText);
+              final secretBox = SecretBox.fromConcatenation(
+                bytes,
+                nonceLength: 12,
+                macLength: 32,
+              );
+              final clearBytes = await _algorithm.decrypt(
+                secretBox,
+                secretKey: secretKey,
+              );
+              return utf8.decode(clearBytes);
+            }
+
+            static Future<List<int>> encryptFile(List<int> fileData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = await _algorithm.encrypt(
+                fileData,
+                secretKey: secretKey,
+              );
+              return secretBox.concatenation();
+            }
+
+            static Future<List<int>> decryptFile(List<int> encryptedData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = SecretBox.fromConcatenation(
+                encryptedData,
+                nonceLength: 12,
+                macLength: 32,
+              );
+              return await _algorithm.decrypt(
+                secretBox,
+                secretKey: secretKey,
+              );
+            }
+          }
+          '''
 
           files = glob.glob('**/encryption_service.dart', recursive=True)
           for path in files:
-              with open(path, 'r', encoding='utf-8') as f:
-                  code = f.read()
-
-              # 1. استبدال الاستدعاء كاملاً بالأقواس لمنع () الزائدة
-              code = re.sub(r'AesCbcWithPkcs7\s*\(\s*\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-              code = re.sub(r'AesCbcWithPkcs7', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-              
-              # 2. إزالة أي أقواس مضاعفة إضافية نتجت عن السكربتات السابقة
-              code = re.sub(r'AesCbc\.with256bits\(macAlgorithm:\s*Hmac\.sha256\(\)\)\s*\(\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-
-              # 3. استبدال Nonce بـ SecretKey
-              code = re.sub(r'\bNonce\s*\(', 'SecretKey(', code)
-
               with open(path, 'w', encoding='utf-8') as f:
-                  f.write(code)
-              print(f'Successfully patched {path}')
+                  f.write(complete_code)
+              print(f'Successfully replaced: {path}')
           "
 
       - name: Set up Java
