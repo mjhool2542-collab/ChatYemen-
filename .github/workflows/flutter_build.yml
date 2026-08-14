@@ -27,10 +27,15 @@ jobs:
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # إصلاح إصدار nearby_connections غير الموجود
+          # 1. حل تعارضات الإصدارات الرئيسية (Hive Generator, Riverpod, Nearby Connections)
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
+          content = content.replace('flutter_riverpod: ^3.0.0', 'flutter_riverpod: ^2.5.1')
+          content = content.replace('flutter_riverpod: 3.0.0', 'flutter_riverpod: ^2.5.1')
+          content = content.replace('build_runner: ^2.4.8', 'build_runner: ^2.4.6')
+          content = content.replace('build_runner: 2.4.8', 'build_runner: ^2.4.6')
 
+          # 2. إضافة المكتبات المفقودة إن لم تكن موجودة
           deps_to_add = []
           for lib, ver in [
               ('qr_flutter', '^4.1.0'),
@@ -108,6 +113,65 @@ jobs:
                 macLength: 32,
               );
               final clearBytes = await _algorithm.decrypt(
+                secretBox,
+                secretKey: secretKey,
+              );
+              return utf8.decode(clearBytes);
+            }
+
+            static Future<List<int>> encryptFile(List<int> fileData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = await _algorithm.encrypt(
+                fileData,
+                secretKey: secretKey,
+              );
+              return secretBox.concatenation();
+            }
+
+            static Future<List<int>> decryptFile(List<int> encryptedData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              return await _algorithm.decrypt(
+                SecretBox.fromConcatenation(
+                  encryptedData,
+                  nonceLength: 12,
+                  macLength: 32,
+                ),
+                secretKey: secretKey,
+              );
+            }
+          }
+          '''
+
+          files = glob.glob('**/encryption_service.dart', recursive=True)
+          for path in files:
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(complete_code)
+          "
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Build and Setup
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+          dart run flutter_launcher_icons || true
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-yemen-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
                 secretBox,
                 secretKey: secretKey,
               );
