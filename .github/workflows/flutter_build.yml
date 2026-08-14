@@ -27,7 +27,6 @@ jobs:
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # إصلاح التبعيات المتعارضة
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('flutter_riverpod: ^3.0.0', 'flutter_riverpod: ^2.5.1')
@@ -35,48 +34,22 @@ jobs:
           content = content.replace('build_runner: ^2.4.8', 'build_runner: ^2.4.6')
           content = content.replace('build_runner: 2.4.8', 'build_runner: ^2.4.6')
 
-          # إضافة المكتبات المطلوبة للخصائص الجديدة
-          deps_to_add = []
-          for lib, ver in [
-              ('qr_flutter', '^4.1.0'),
-              ('mobile_scanner', '^5.0.0'),
-              ('permission_handler', '^11.3.0'),
-              ('network_info_plus', '^5.0.1')
-          ]:
-              if lib not in content:
-                  deps_to_add.append(f'  {lib}: {ver}')
+          deps = ['qr_flutter: ^4.1.0', 'mobile_scanner: ^5.0.0', 'permission_handler: ^11.3.0', 'network_info_plus: ^5.0.1']
+          for d in deps:
+              pkg = d.split(':')[0]
+              if pkg not in content:
+                  content = content.replace('dependencies:', f'dependencies:\n  {d}')
 
-          if deps_to_add:
-              new_deps = 'dependencies:\n' + '\n'.join(deps_to_add)
-              content = content.replace('dependencies:', new_deps)
+          if 'flutter_launcher_icons:' not in content:
+              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
+
+          if 'dependency_overrides:' not in content:
+              content += '\ndependency_overrides:\n  file_picker: ^8.0.0\n  flutter_plugin_android_lifecycle: ^2.0.17\n'
 
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
           "
           rm -f pubspec.lock
-
-      - name: Force Android Compile SDK 36 Globally
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import glob, re
-
-          for file_path in glob.glob('**/build.gradle*', recursive=True):
-              try:
-                  with open(file_path, 'r', encoding='utf-8') as f:
-                      content = f.read()
-                  
-                  new_content = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', content)
-                  new_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', new_content)
-                  new_content = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 36', new_content)
-                  new_content = re.sub(r'targetSdk\s+\d+', 'targetSdk 36', new_content)
-                  
-                  if new_content != content:
-                      with open(file_path, 'w', encoding='utf-8') as f:
-                          f.write(new_content)
-              except Exception:
-                  pass
-          "
 
       - name: Inject Android Permissions
         run: |
@@ -88,26 +61,18 @@ jobs:
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
               
-              perms_list = [
-                  'android.permission.INTERNET',
-                  'android.permission.CAMERA',
-                  'android.permission.READ_MEDIA_IMAGES',
-                  'android.permission.ACCESS_FINE_LOCATION',
-                  'android.permission.ACCESS_COARSE_LOCATION',
-                  'android.permission.CHANGE_WIFI_STATE',
-                  'android.permission.ACCESS_WIFI_STATE',
-                  'android.permission.BLUETOOTH',
-                  'android.permission.BLUETOOTH_ADMIN',
-                  'android.permission.BLUETOOTH_SCAN',
-                  'android.permission.BLUETOOTH_ADVERTISE',
-                  'android.permission.BLUETOOTH_CONNECT',
-                  'android.permission.NEARBY_WIFI_DEVICES'
+              perms = [
+                  'INTERNET', 'CAMERA', 'READ_MEDIA_IMAGES',
+                  'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
+                  'CHANGE_WIFI_STATE', 'ACCESS_WIFI_STATE',
+                  'BLUETOOTH', 'BLUETOOTH_ADMIN', 'BLUETOOTH_SCAN',
+                  'BLUETOOTH_ADVERTISE', 'BLUETOOTH_CONNECT', 'NEARBY_WIFI_DEVICES'
               ]
               
-              perms_str = '\n'.join([f'    <uses-permission android:name=\"{p}\" />' for p in perms_list])
+              p_str = '\n'.join([f'    <uses-permission android:name=\"android.permission.{p}\" />' for p in perms])
               
               if 'INTERNET' not in content:
-                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + perms_str)
+                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + p_str)
                   with open(path, 'w', encoding='utf-8') as f:
                       f.write(content)
           "
@@ -203,18 +168,28 @@ jobs:
           
           python3 -c "
           import os
+          props_path = 'android/gradle.properties'
+          if os.path.exists(props_path):
+              with open(props_path, 'a', encoding='utf-8') as f:
+                  f.write('\nandroid.suppressUnsupportedCompileSdk=36\n')
+          "
+
+          python3 -c "
+          import os
           root_gradle = 'android/build.gradle'
           if os.path.exists(root_gradle):
               with open(root_gradle, 'r', encoding='utf-8') as f:
                   g_content = f.read()
               
               sub_config = '''
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileSdkVersion 36
-                          buildToolsVersion '34.0.0'
+          allprojects {
+              subprojects {
+                  afterEvaluate { project ->
+                      if (project.hasProperty('android')) {
+                          project.android {
+                              compileSdkVersion 36
+                              buildToolsVersion '34.0.0'
+                          }
                       }
                   }
               }
@@ -224,8 +199,29 @@ jobs:
                   with open(root_gradle, 'a', encoding='utf-8') as f:
                       f.write(sub_config)
           "
-          
+
           flutter pub get
+          
+          python3 -c "
+          import glob, re, os
+          pub_cache = os.path.expanduser('~/.pub-cache')
+          for root, dirs, files in os.walk(pub_cache):
+              for file in files:
+                  if file == 'build.gradle':
+                      file_path = os.path.join(root, file)
+                      try:
+                          with open(file_path, 'r', encoding='utf-8') as f:
+                              c = f.read()
+                          nc = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', c)
+                          nc = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', nc)
+                          if nc != c:
+                              with open(file_path, 'w', encoding='utf-8') as f:
+                                  f.write(nc)
+                      except Exception:
+                          pass
+          "
+
+          dart run flutter_launcher_icons || true
           flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK
