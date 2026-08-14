@@ -27,72 +27,27 @@ jobs:
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-      - name: Replace encryption_service.dart with V2 Compatible Code
+      - name: Patch encryption_service.dart safely
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
-          import glob
-
-          new_code = '''import 'dart:convert';
-          import 'dart:typed_data';
-          import 'package:cryptography/cryptography.dart';
-
-          class EncryptionService {
-            static final _algorithm = AesCbc.with256bits(macAlgorithm: Hmac.sha256());
-
-            static Future<String> encryptText(String text, String key) async {
-              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
-              final secretBox = await _algorithm.encrypt(
-                utf8.encode(text),
-                secretKey: secretKey,
-              );
-              return base64.encode(secretBox.concatenation());
-            }
-
-            static Future<String> decryptText(String encryptedText, String key) async {
-              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
-              final bytes = base64.decode(encryptedText);
-              final secretBox = SecretBox.fromConcatenation(
-                bytes,
-                nonceLength: 12,
-                macLength: 32,
-              );
-              final clearBytes = await _algorithm.decrypt(
-                secretBox,
-                secretKey: secretKey,
-              );
-              return utf8.decode(clearBytes);
-            }
-
-            static Future<List<int>> encryptFile(List<int> fileData, String key) async {
-              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
-              final secretBox = await _algorithm.encrypt(
-                fileData,
-                secretKey: secretKey,
-              );
-              return secretBox.concatenation();
-            }
-
-            static Future<List<int>> decryptFile(List<int> encryptedData, String key) async {
-              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
-              final secretBox = SecretBox.fromConcatenation(
-                encryptedData,
-                nonceLength: 12,
-                macLength: 32,
-              );
-              return await _algorithm.decrypt(
-                secretBox,
-                secretKey: secretKey,
-              );
-            }
-          }
-          '''
+          import glob, re
 
           files = glob.glob('**/encryption_service.dart', recursive=True)
           for path in files:
+              with open(path, 'r', encoding='utf-8') as f:
+                  code = f.read()
+
+              # 1. استبدال Constructor القديم بـ AesCbc V2 مع الحفاظ على الأقواس الأصلية
+              code = re.sub(r'AesCbcWithPkcs7\s*\(\s*\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
+              code = re.sub(r'AesCbcWithPkcs7', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
+
+              # 2. استبدال Nonce بـ SecretKey مع الحفاظ على القيمة داخل القوس
+              code = re.sub(r'\bNonce\s*\(', 'SecretKey(', code)
+
               with open(path, 'w', encoding='utf-8') as f:
-                  f.write(new_code)
-              print(f'Replaced {path} with updated V2 implementation.')
+                  f.write(code)
+              print(f'Patched: {path}')
           "
 
       - name: Set up Java
@@ -108,6 +63,20 @@ jobs:
 
       - name: Install dependencies & Repairs Android files
         run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
           flutter pub get
