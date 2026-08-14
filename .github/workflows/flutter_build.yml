@@ -20,14 +20,17 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix pubspec dependencies
+      - name: Fix pubspec dependencies & Missing assets
         run: |
           cd ${{ env.PROJECT_DIR }}
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-      - name: Rewrite encryption_service.dart cleanly with Python
+          # إنشاء المجلدات المطلوبة لتفادي خطأ assets
+          mkdir -p assets/images assets/icons
+
+      - name: Rewrite encryption_service.dart cleanly
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
@@ -108,6 +111,33 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Upgrade Android SDK Version
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          
+          # رفع compileSdkVersion و targetSdkVersion إلى 36
+          find android -name "build.gradle*" -exec sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' {} +
+          find android -name "build.gradle*" -exec sed -i 's/targetSdkVersion .*/targetSdkVersion 36/g' {} +
+          find android -name "build.gradle*" -exec sed -i 's/compileSdk = .*/compileSdk = 36/g' {} +
+          
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
