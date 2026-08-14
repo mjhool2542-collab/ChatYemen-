@@ -120,6 +120,61 @@ jobs:
           flutter create . --platforms=android
           flutter pub get
 
+      - name: Configure Android SDK Version Safely
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import os
+
+          # إضافة إعدادات SDK إلى local.properties ليقرأها Flutter تلقائياً
+          with open('android/local.properties', 'a', encoding='utf-8') as f:
+              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
+
+          # استبدال صريح وآمن في ملفات Gradle لمنع الأخطاء التركيبية
+          target_file = 'android/app/build.gradle.kts'
+          if os.path.exists(target_file):
+              with open(target_file, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              # تعديل compileSdk السليم لـ Kotlin DSL
+              lines = content.splitlines()
+              new_lines = []
+              for line in lines:
+                  if 'compileSdk' in line and '=' in line:
+                      new_lines.append('    compileSdk = 36')
+                  elif 'compileSdkVersion' in line:
+                      new_lines.append('    compileSdkVersion 36')
+                  elif 'targetSdk' in line and '=' in line:
+                      new_lines.append('    targetSdk = 36')
+                  elif 'targetSdkVersion' in line:
+                      new_lines.append('    targetSdkVersion 36')
+                  else:
+                      new_lines.append(line)
+              with open(target_file, 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(new_lines))
+          "
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Re-generate Android
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+
       - name: Force Android Compile SDK 36
         run: |
           cd ${{ env.PROJECT_DIR }}
