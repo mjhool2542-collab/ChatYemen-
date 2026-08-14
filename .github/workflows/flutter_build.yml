@@ -29,10 +29,11 @@ jobs:
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-          # 2. تحديث المسميات القديمة داخل ملف التشفير ليطابق الاصدارات الحديثة
+          # 2. تصحيح استدعاء التشفير وإزالة المعامل key غير المدعوم
           FILE="lib/services/encryption_service.dart"
           if [ -f "$FILE" ]; then
-            sed -i 's/AesCbcWithPkcs7(/AesCbc.with256bits(/g' "$FILE"
+            sed -i 's/AesCbcWithPkcs7([^)]*)/AesCbc.with256bits()/g' "$FILE"
+            sed -i 's/AesCbc.with256bits([^)]*)/AesCbc.with256bits()/g' "$FILE"
             sed -i 's/Nonce(/SecretKey(/g' "$FILE"
             sed -i 's/Nonce /SecretKey /g' "$FILE"
           fi
