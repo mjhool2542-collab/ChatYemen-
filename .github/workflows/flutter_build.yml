@@ -16,7 +16,7 @@ jobs:
 
       - name: Extract zip file
         run: |
-          unzip chat_yemen_2026_pro_finall.zip -d extracted_project
+          unzip chat_yemen.zip -d extracted_project
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
