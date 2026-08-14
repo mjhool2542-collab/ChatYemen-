@@ -27,7 +27,7 @@ jobs:
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
 
-      - name: Patch encryption_service.dart safely
+      - name: Cleanly Patch encryption_service.dart
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
@@ -38,19 +38,19 @@ jobs:
               with open(path, 'r', encoding='utf-8') as f:
                   code = f.read()
 
-              # 1. استبدال AesCbcWithPkcs7() بـ AesCbc.with256bits(macAlgorithm: Hmac.sha256()) بدون أقواس مضاعفة
+              # 1. استبدال الاستدعاء كاملاً بالأقواس لمنع () الزائدة
               code = re.sub(r'AesCbcWithPkcs7\s*\(\s*\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
               code = re.sub(r'AesCbcWithPkcs7', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
-
-              # 2. تنظيف الأقواس المزدوجة الناتجة إن وجدت
-              code = code.replace('AesCbc.with256bits(macAlgorithm: Hmac.sha256())()', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())')
+              
+              # 2. إزالة أي أقواس مضاعفة إضافية نتجت عن السكربتات السابقة
+              code = re.sub(r'AesCbc\.with256bits\(macAlgorithm:\s*Hmac\.sha256\(\)\)\s*\(\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
 
               # 3. استبدال Nonce بـ SecretKey
               code = re.sub(r'\bNonce\s*\(', 'SecretKey(', code)
 
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(code)
-              print(f'Patched successfully: {path}')
+              print(f'Successfully patched {path}')
           "
 
       - name: Set up Java
