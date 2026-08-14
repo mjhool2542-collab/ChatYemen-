@@ -120,6 +120,52 @@ jobs:
           flutter create . --platforms=android
           flutter pub get
 
+      - name: Force Global Android SDK 36 on All Subprojects
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import os
+
+          gradle_file = 'android/build.gradle'
+          if os.path.exists(gradle_file):
+              with open(gradle_file, 'a', encoding='utf-8') as f:
+                  f.write('''
+
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 36
+                      }
+                  }
+              }
+          }
+          ''')
+              print('Global compileSdkVersion 36 applied successfully.')
+          "
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Re-generate Android
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+
       - name: Configure Android SDK Version Safely
         run: |
           cd ${{ env.PROJECT_DIR }}
