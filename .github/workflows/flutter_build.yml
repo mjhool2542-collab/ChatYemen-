@@ -20,14 +20,14 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix dependencies
+      - name: Fix pubspec and dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # 1. حل تعارضات الإصدارات
+          # 1. إصلاح حل التبعيات وتعديل الإصدارات المتعارضة
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('flutter_riverpod: ^3.0.0', 'flutter_riverpod: ^2.5.1')
@@ -35,7 +35,7 @@ jobs:
           content = content.replace('build_runner: ^2.4.8', 'build_runner: ^2.4.6')
           content = content.replace('build_runner: 2.4.8', 'build_runner: ^2.4.6')
 
-          # 2. إضافة المكتبات المفقودة
+          # 2. إضافة جميع مكتبات الميزات الجديدة بطريقة آمنة يمنع التكرار
           deps_to_add = []
           for lib, ver in [
               ('qr_flutter', '^4.1.0'),
@@ -50,6 +50,7 @@ jobs:
               new_deps = 'dependencies:\n' + '\n'.join(deps_to_add)
               content = content.replace('dependencies:', new_deps)
 
+          # 3. إعداد إيقونة التطبيق في dev_dependencies
           if 'flutter_launcher_icons:' not in content:
               content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
 
@@ -59,13 +60,13 @@ jobs:
           rm -f pubspec.lock
           mkdir -p assets/images assets/icons
 
-      - name: Force Android Compile SDK 36
+      - name: Force Android Compile SDK 36 on Root and Sub-projects
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
           import glob, re
 
-          # تحديث compileSdkVersion و targetSdkVersion إلى 36 لجميع ملفات build.gradle
+          # رفع compileSdk و targetSdk لجميع المكتبات والمشروع الرئيسي إلى 36
           for file_path in glob.glob('**/build.gradle*', recursive=True):
               try:
                   with open(file_path, 'r', encoding='utf-8') as f:
@@ -79,11 +80,11 @@ jobs:
                   if new_content != content:
                       with open(file_path, 'w', encoding='utf-8') as f:
                           f.write(new_content)
-              except Exception as e:
+              except Exception:
                   pass
           "
 
-      - name: Inject Permissions
+      - name: Inject Android Permissions
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
@@ -92,7 +93,21 @@ jobs:
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
-              perms = '<uses-permission android:name=\"android.permission.INTERNET\" />\n<uses-permission android:name=\"android.permission.CAMERA\" />\n<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />'
+              perms = '''
+    <uses-permission android:name=\"android.permission.INTERNET\" />
+    <uses-permission android:name=\"android.permission.CAMERA\" />
+    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
+    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
+    <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />
+    <uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\" />
+    <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />
+    <uses-permission android:name=\"android.permission.BLUETOOTH\" />
+    <uses-permission android:name=\"android.permission.BLUETOOTH_ADMIN\" />
+    <uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" />
+    <uses-permission android:name=\"android.permission.BLUETOOTH_ADVERTISE\" />
+    <uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />
+    <uses-permission android:name=\"android.permission.NEARBY_WIFI_DEVICES\" />
+              '''
               if 'INTERNET' not in content:
                   content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + perms)
                   with open(path, 'w', encoding='utf-8') as f:
@@ -187,6 +202,28 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
+          
+          # فرض compileSdk 36 على حزم Gradle الفرعية المستوردة عبر pub
+          mkdir -p android
+          python3 -c "
+          import os
+          build_gradle_path = 'android/build.gradle'
+          gradle_subproject_force = '''
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 36
+                      }
+                  }
+              }
+          }
+          '''
+          if os.path.exists(build_gradle_path):
+              with open(build_gradle_path, 'a', encoding='utf-8') as f:
+                  f.write(gradle_subproject_force)
+          "
+          
           flutter pub get
           dart run flutter_launcher_icons || true
           flutter build apk --release --no-tree-shake-icons
