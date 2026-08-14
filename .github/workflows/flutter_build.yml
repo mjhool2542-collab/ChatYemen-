@@ -25,8 +25,89 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
+          
+          # إضافة جميع المكتبات اللازمة للـ QR والسرعة العالية وتحديث الأيقونة
+          python3 -c "
+          with open('pubspec.yaml', 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          needed_deps = '''
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.0.0
+  permission_handler: ^11.3.0
+  network_info_plus: ^5.0.1
+'''
+          if 'qr_flutter' not in content:
+              content = content.replace('dependencies:', 'dependencies:' + needed_deps)
+          
+          if 'dev_dependencies:' in content and 'flutter_launcher_icons:' not in content:
+              content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
+          elif 'flutter_launcher_icons:' not in content:
+              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n'
+          
+          with open('pubspec.yaml', 'w', encoding='utf-8') as f:
+              f.write(content)
+          "
           rm -f pubspec.lock
           mkdir -p assets/images assets/icons
+
+      - name: Inject App Icon Configuration
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import os, glob
+
+          image_files = glob.glob('assets/images/*.*')
+          icon_path = 'assets/images/icon.png'
+          if image_files:
+              icon_path = image_files[0]
+              print(f'Found image for icon: {icon_path}')
+
+          icon_config = f'''
+flutter_launcher_icons:
+  android: \"launcher_icon\"
+  ios: true
+  image_path: \"{icon_path}\"
+  min_sdk_android: 21
+'''
+          with open('pubspec.yaml', 'a', encoding='utf-8') as f:
+              f.write(icon_config)
+          "
+
+      - name: Inject Full Android Permissions
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import os
+
+          manifest_path = 'android/app/src/main/AndroidManifest.xml'
+          if os.path.exists(manifest_path):
+              with open(manifest_path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              permissions = '''
+              <uses-permission android:name=\"android.permission.INTERNET\" />
+              <uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\" />
+              <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />
+              <uses-permission android:name=\"android.permission.CHANGE_NETWORK_STATE\" />
+              <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />
+              <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
+              <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />
+              <uses-permission android:name=\"android.permission.NEARBY_WIFI_DEVICES\" />
+              <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />
+              <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />
+              <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
+              <uses-permission android:name=\"android.permission.READ_MEDIA_VIDEO\" />
+              <uses-permission android:name=\"android.permission.READ_MEDIA_AUDIO\" />
+              <uses-permission android:name=\"android.permission.CAMERA\" />
+              <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />
+              '''
+              
+              if '<uses-permission' not in content:
+                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + permissions)
+                  with open(manifest_path, 'w', encoding='utf-8') as f:
+                      f.write(content)
+          "
 
       - name: Rewrite encryption_service.dart cleanly
         run: |
@@ -100,7 +181,6 @@ jobs:
           for path in files:
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(complete_code)
-              print(f'Successfully replaced: {path}')
           "
 
       - name: Set up Java
@@ -108,6 +188,53 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Generate Launcher Icons
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+          dart run flutter_launcher_icons || true
+
+      - name: Force Patch All Pub Cache Packages to SDK 36
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob, re
+
+          pub_cache_gradles = glob.glob('/home/runner/.pub-cache/hosted/pub.dev/**/build.gradle', recursive=True)
+          for gfile in pub_cache_gradles:
+              try:
+                  with open(gfile, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  new_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', content)
+                  new_content = re.sub(r'compileSdk\s+=\s+\d+', 'compileSdk = 36', new_content)
+                  new_content = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', new_content)
+                  
+                  if new_content != content:
+                      with open(gfile, 'w', encoding='utf-8') as f:
+                          f.write(new_content)
+              except Exception as e:
+                  pass
+          "
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload Final APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-yemen-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          overwrite: true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
