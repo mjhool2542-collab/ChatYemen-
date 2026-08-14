@@ -23,13 +23,77 @@ jobs:
       - name: Fix pubspec dependencies
         run: |
           cd ${{ env.PROJECT_DIR }}
-          # 1. إصلاح قيود الحزم العادية
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
-          
-          # 2. إجبار المشروع على استخدام الإصدار v2.0.5 المستقر بدون تعديل في الكود البرمجي
-          sed -i 's/cryptography:.*/cryptography: 2.0.5/g' pubspec.yaml
           rm -f pubspec.lock
+
+      - name: Replace encryption_service.dart with V2 Compatible Code
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob
+
+          new_code = '''import 'dart:convert';
+          import 'dart:typed_data';
+          import 'package:cryptography/cryptography.dart';
+
+          class EncryptionService {
+            static final _algorithm = AesCbc.with256bits(macAlgorithm: Hmac.sha256());
+
+            static Future<String> encryptText(String text, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = await _algorithm.encrypt(
+                utf8.encode(text),
+                secretKey: secretKey,
+              );
+              return base64.encode(secretBox.concatenation());
+            }
+
+            static Future<String> decryptText(String encryptedText, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final bytes = base64.decode(encryptedText);
+              final secretBox = SecretBox.fromConcatenation(
+                bytes,
+                nonceLength: 12,
+                macLength: 32,
+              );
+              final clearBytes = await _algorithm.decrypt(
+                secretBox,
+                secretKey: secretKey,
+              );
+              return utf8.decode(clearBytes);
+            }
+
+            static Future<List<int>> encryptFile(List<int> fileData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = await _algorithm.encrypt(
+                fileData,
+                secretKey: secretKey,
+              );
+              return secretBox.concatenation();
+            }
+
+            static Future<List<int>> decryptFile(List<int> encryptedData, String key) async {
+              final secretKey = SecretKey(utf8.encode(key.padRight(32, '0').substring(0, 32)));
+              final secretBox = SecretBox.fromConcatenation(
+                encryptedData,
+                nonceLength: 12,
+                macLength: 32,
+              );
+              return await _algorithm.decrypt(
+                secretBox,
+                secretKey: secretKey,
+              );
+            }
+          }
+          '''
+
+          files = glob.glob('**/encryption_service.dart', recursive=True)
+          for path in files:
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(new_code)
+              print(f'Replaced {path} with updated V2 implementation.')
+          "
 
       - name: Set up Java
         uses: actions/setup-java@v5
@@ -46,7 +110,6 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
-          flutter pub downgrade cryptography
           flutter pub get
 
       - name: Build APK
