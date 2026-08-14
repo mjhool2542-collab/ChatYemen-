@@ -1,3 +1,45 @@
+name: Flutter Build & Release
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract zip file
+        run: |
+          unzip chat_yemen_2026_pro_finall.zip -d extracted_project
+          PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
+          echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
+
+      - name: Fix dependencies
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          with open('pubspec.yaml', 'r', encoding='utf-8') as f:
+              content = f.read()
+          
+          # إضافات المكتبات
+          if 'qr_flutter' not in content:
+              content = content.replace('dependencies:', 'dependencies:\n  qr_flutter: ^4.1.0\n  mobile_scanner: ^5.0.0\n  permission_handler: ^11.3.0\n  network_info_plus: ^5.0.1')
+          
+          # إضافة الأيقونات
+          if 'flutter_launcher_icons:' not in content:
+              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
+          
+          with open('pubspec.yaml', 'w', encoding='utf-8') as f:
+              f.write(content)
+          "
+          rm -f pubspec.lock
+          mkdir -p assets/images assets/icons
+
       - name: Inject Permissions
         run: |
           cd ${{ env.PROJECT_DIR }}
@@ -7,9 +49,48 @@
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
-              perms = """<uses-permission android:name=\"android.permission.INTERNET\" />\n<uses-permission android:name=\"android.permission.CAMERA\" />\n<uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />"""
-              if 'INTERNET' not in content:
-                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://android.com\">\n' + perms)
+              
+              perms = '\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />'
+              
+              if '<manifest' in content and 'android.permission.INTERNET' not in content:
+                  # Insert permissions right after the opening <manifest ...> tag
+                  parts = content.split('>', 1)
+                  content = parts[0] + '>' + perms + parts[1]
+                  
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(content)
           "
+
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter pub get
+
+      - name: Generate Launcher Icons
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          # Create a dummy image icon if it doesn't exist so the asset builder doesn't crash
+          touch assets/images/icon.png
+          flutter pub run flutter_launcher_icons
+
+      - name: Build Android APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
