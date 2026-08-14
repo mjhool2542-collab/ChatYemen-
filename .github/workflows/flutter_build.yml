@@ -24,14 +24,11 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           
-          # استخدام Python لتعديل pubspec.yaml بشكل آمن
           python3 << 'PYTHON_SCRIPT'
-          import re
-          
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
           
-          # قائمة المكتبات المطلوبة
+          # تعريف المكتبات
           deps = {
               'qr_flutter': '^4.1.0',
               'mobile_scanner': '^5.0.0',
@@ -39,40 +36,35 @@ jobs:
               'network_info_plus': '^5.0.1'
           }
           
-          # إضافة المكتبات تحت dependencies
+          # إضافة المكتبات
           for dep, ver in deps.items():
               if dep not in content:
                   content = content.replace('dependencies:', f'dependencies:\n  {dep}: {ver}', 1)
-                  print(f'✅ Added {dep}')
+                  print(f'Added {dep}')
               else:
-                  print(f'ℹ️ {dep} already exists')
+                  print(f'{dep} already exists')
           
-          # التحقق من وجود dev_dependencies
+          # إضافة dev_dependencies
           if 'dev_dependencies:' not in content:
               content += '\ndev_dependencies:\n'
-              print('✅ Added dev_dependencies section')
+              print('Added dev_dependencies section')
           
-          # إضافة flutter_launcher_icons في dev_dependencies
+          # إضافة flutter_launcher_icons
           if 'flutter_launcher_icons:' not in content:
-              # إضافة إلى dev_dependencies
               content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
-              # إضافة قسم التكوين في نهاية الملف
               content += '\n\nflutter_launcher_icons:\n  android: "launcher_icon"\n  image_path: "assets/images/icon.png"\n  min_sdk_android: 21\n'
-              print('✅ Added flutter_launcher_icons')
+              print('Added flutter_launcher_icons')
           else:
-              print('ℹ️ flutter_launcher_icons already exists')
+              print('flutter_launcher_icons already exists')
           
-          # كتابة الملف
+          # حفظ الملف
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
           
-          print('✅ pubspec.yaml updated successfully')
+          print('pubspec.yaml updated successfully')
           PYTHON_SCRIPT
           
-          # حذف pubspec.lock
           rm -f pubspec.lock
-          
-          # إنشاء المجلدات المطلوبة
           mkdir -p assets/images assets/icons
 
       - name: Inject Permissions
@@ -82,18 +74,17 @@ jobs:
           
           if [ -f "$MANIFEST" ]; then
             if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
-              # استخدام sed لإضافة الأذونات
               sed -i '/<manifest/a\
         <uses-permission android:name="android.permission.INTERNET" />\
         <uses-permission android:name="android.permission.CAMERA" />\
         <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\
         <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' "$MANIFEST"
-              echo "✅ Permissions added successfully"
+              echo "Permissions added successfully"
             else
-              echo "ℹ️ Permissions already exist"
+              echo "Permissions already exist"
             fi
           else
-            echo "⚠️ AndroidManifest.xml not found"
+            echo "AndroidManifest.xml not found - skipping permissions"
           fi
 
       - name: Set up Java Development Kit (JDK)
@@ -117,18 +108,14 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           
-          # إنشاء مجلد assets/images إذا لم يكن موجوداً
           mkdir -p assets/images
           
-          # إنشاء أيقونة وهمية إذا لم تكن موجودة
           if [ ! -f "assets/images/icon.png" ]; then
             echo "Creating dummy icon..."
-            # إنشاء أيقونة PNG بسيطة باستخدام base64
             echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" | base64 -d > assets/images/icon.png
           fi
           
-          # تشغيل أداة الأيقونات
-          flutter pub run flutter_launcher_icons || echo "⚠️ Icon generation skipped"
+          flutter pub run flutter_launcher_icons || echo "Icon generation skipped"
 
       - name: Build Android APK
         run: |
