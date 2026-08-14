@@ -59,9 +59,8 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
-          import os, glob, re
+          import glob, re
 
-          # 1. تعديل كافة ملفات build.gradle الموجودة في المشروع
           for file_path in glob.glob('**/build.gradle*', recursive=True):
               try:
                   with open(file_path, 'r', encoding='utf-8') as f:
@@ -88,23 +87,27 @@ jobs:
           if os.path.exists(path):
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
-              perms = '''
-    <uses-permission android:name=\"android.permission.INTERNET\" />
-    <uses-permission android:name=\"android.permission.CAMERA\" />
-    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
-    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
-    <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />
-    <uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\" />
-    <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />
-    <uses-permission android:name=\"android.permission.BLUETOOTH\" />
-    <uses-permission android:name=\"android.permission.BLUETOOTH_ADMIN\" />
-    <uses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" />
-    <uses-permission android:name=\"android.permission.BLUETOOTH_ADVERTISE\" />
-    <uses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" />
-    <uses-permission android:name=\"android.permission.NEARBY_WIFI_DEVICES\" />
-              '''
+              
+              perms_list = [
+                  'android.permission.INTERNET',
+                  'android.permission.CAMERA',
+                  'android.permission.READ_MEDIA_IMAGES',
+                  'android.permission.ACCESS_FINE_LOCATION',
+                  'android.permission.ACCESS_COARSE_LOCATION',
+                  'android.permission.CHANGE_WIFI_STATE',
+                  'android.permission.ACCESS_WIFI_STATE',
+                  'android.permission.BLUETOOTH',
+                  'android.permission.BLUETOOTH_ADMIN',
+                  'android.permission.BLUETOOTH_SCAN',
+                  'android.permission.BLUETOOTH_ADVERTISE',
+                  'android.permission.BLUETOOTH_CONNECT',
+                  'android.permission.NEARBY_WIFI_DEVICES'
+              ]
+              
+              perms_str = '\n'.join([f'    <uses-permission android:name=\"{p}\" />' for p in perms_list])
+              
               if 'INTERNET' not in content:
-                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + perms)
+                  content = content.replace('<manifest', '<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n' + perms_str)
                   with open(path, 'w', encoding='utf-8') as f:
                       f.write(content)
           "
@@ -198,7 +201,6 @@ jobs:
           cd ${{ env.PROJECT_DIR }}
           flutter create . --platforms=android
           
-          # فرض compileSdk 36 مباشرة في جذر Gradle للمشروع والـ Plugins الحزمية
           python3 -c "
           import os
           root_gradle = 'android/build.gradle'
