@@ -24,8 +24,13 @@ jobs:
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
+          import re
+
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
+
+          # إزالة الإعدادات القديمة flutter_icons نهائياً لمنع البحث عن app_icon.png
+          content = re.sub(r'flutter_icons:\s*\n(\s+.*\n)*', '', content)
 
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
@@ -40,8 +45,10 @@ jobs:
               if pkg not in content:
                   content = content.replace('dependencies:', f'dependencies:\n  {d}')
 
+          icon_config = '''\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: true\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n  adaptive_icon_background: \"#FFFFFF\"\n  adaptive_icon_foreground: \"assets/images/icon.png\"\n'''
+          
           if 'flutter_launcher_icons:' not in content:
-              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: true\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n  adaptive_icon_background: \"#FFFFFF\"\n  adaptive_icon_foreground: \"assets/images/icon.png\"\n'
+              content += icon_config
 
           if 'dependency_overrides:' not in content:
               content += '\ndependency_overrides:\n  file_picker: ^8.0.0\n  flutter_plugin_android_lifecycle: ^2.0.17\n'
