@@ -126,6 +126,52 @@ jobs:
           python3 -c "
           import glob, re
 
+          pub_cache_gradles = glob.glob('/home/runner/.pub-cache/hosted/pub.dev/**/build.gradle', recursive=True)
+          for gfile in pub_cache_gradles:
+              try:
+                  with open(gfile, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  new_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', content)
+                  new_content = re.sub(r'compileSdk\s+=\s+\d+', 'compileSdk = 36', new_content)
+                  new_content = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', new_content)
+                  
+                  if new_content != content:
+                      with open(gfile, 'w', encoding='utf-8') as f:
+                          f.write(new_content)
+                      print(f'Patched: {gfile}')
+              except Exception as e:
+                  print(f'Failed to patch {gfile}: {e}')
+          "
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-yemen-release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Re-generate Android
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+
+      - name: Force Patch All Pub Cache Packages to SDK 36
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob, re
+
           # البحث عن كافة ملفات build.gradle داخل pub-cache وتغيير compileSdkVersion إلى 36
           pub_cache_gradles = glob.glob('/home/runner/.pub-cache/hosted/pub.dev/**/build.gradle', recursive=True)
           for gfile in pub_cache_gradles:
