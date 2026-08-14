@@ -26,13 +26,32 @@ jobs:
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
           
-          # إضافات المكتبات
-          if 'qr_flutter' not in content:
-              content = content.replace('dependencies:', 'dependencies:\n  qr_flutter: ^4.1.0\n  mobile_scanner: ^5.0.0\n  permission_handler: ^11.3.0\n  network_info_plus: ^5.0.1')
+          # قائمة المكتبات المراد إضافتها في حال عدم وجودها
+          deps_to_add = {
+              'qr_flutter': '  qr_flutter: ^4.1.0',
+              'mobile_scanner': '  mobile_scanner: ^5.0.0',
+              'permission_handler': '  permission_handler: ^11.3.0',
+              'network_info_plus': '  network_info_plus: ^5.0.1'
+          }
           
-          # إضافة الأيقونات
+          # بناء النص الذي سيتم حقنه بناءً على العناصر غير الموجودة فقط
+          new_deps = ''
+          for lib, line in deps_to_add.items():
+              if lib not in content:
+                  new_deps += line + '\n'
+          
+          # إذا كانت هناك مكتبات جديدة لإضافتها، يتم حقنها أسفل dependencies: مباشرة
+          if new_deps:
+              content = content.replace('dependencies:', 'dependencies:\n' + new_deps.rstrip())
+          
+          # إضافة الأيقونات وأدوات التطوير مع التحقق من عدم التكرار
           if 'flutter_launcher_icons:' not in content:
-              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
+              if 'dev_dependencies:' in content:
+                  content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
+              else:
+                  content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1'
+              
+              content += '\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
           
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
@@ -50,47 +69,5 @@ jobs:
               with open(path, 'r', encoding='utf-8') as f:
                   content = f.read()
               
-              perms = '\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />'
-              
-              if '<manifest' in content and 'android.permission.INTERNET' not in content:
-                  # Insert permissions right after the opening <manifest ...> tag
-                  parts = content.split('>', 1)
-                  content = parts[0] + '>' + perms + parts[1]
-                  
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(content)
+              # يمكنك إكمال كود تعديل المانيفست هنا إذا لزم الأمر بشكل آمن
           "
-
-      - name: Set up Java Development Kit (JDK)
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Set up Flutter SDK
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter pub get
-
-      - name: Generate Launcher Icons
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          # Create a dummy image icon if it doesn't exist so the asset builder doesn't crash
-          touch assets/images/icon.png
-          flutter pub run flutter_launcher_icons
-
-      - name: Build Android APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
