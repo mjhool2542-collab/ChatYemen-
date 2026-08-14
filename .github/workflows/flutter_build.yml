@@ -9,6 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,55 +20,117 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix dependencies
+      - name: Fix dependencies (بدون تكرار المفاتيح)
         run: |
           cd ${{ env.PROJECT_DIR }}
-          python3 -c "
+          python3 << 'EOF'
+          import re
+          
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
           
-          # قائمة المكتبات المراد إضافتها في حال عدم وجودها
+          # 1. إضافة المكتبات في dependencies (فقط إذا لم تكن موجودة)
           deps_to_add = {
-              'qr_flutter': '  qr_flutter: ^4.1.0',
-              'mobile_scanner': '  mobile_scanner: ^5.0.0',
-              'permission_handler': '  permission_handler: ^11.3.0',
-              'network_info_plus': '  network_info_plus: ^5.0.1'
+              'qr_flutter': '^4.1.0',
+              'mobile_scanner': '^5.0.0',
+              'permission_handler': '^11.3.0',
+              'network_info_plus': '^5.0.1'
           }
           
-          # بناء النص الذي سيتم حقنه بناءً على العناصر غير الموجودة فقط
-          new_deps = ''
-          for lib, line in deps_to_add.items():
-              if lib not in content:
-                  new_deps += line + '\n'
-          
-          # إذا كانت هناك مكتبات جديدة لإضافتها، يتم حقنها أسفل dependencies: مباشرة
-          if new_deps:
-              content = content.replace('dependencies:', 'dependencies:\n' + new_deps.rstrip())
-          
-          # إضافة الأيقونات وأدوات التطوير مع التحقق من عدم التكرار
-          if 'flutter_launcher_icons:' not in content:
-              if 'dev_dependencies:' in content:
-                  content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
+          for dep, ver in deps_to_add.items():
+              if dep not in content:
+                  # إضافة بعد dependencies: مباشرة
+                  content = content.replace('dependencies:', f'dependencies:\n  {dep}: {ver}', 1)
               else:
-                  content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1'
-              
-              content += '\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
+                  print(f'⚠️ {dep} موجود بالفعل')
+          
+          # 2. إضافة dev_dependencies و flutter_launcher_icons بطريقة آمنة
+          # التحقق من وجود dev_dependencies
+          if 'dev_dependencies:' not in content:
+              content += '\ndev_dependencies:\n'
+          
+          # التحقق من وجود flutter_launcher_icons في dev_dependencies
+          if 'flutter_launcher_icons:' not in content:
+              # إضافته تحت dev_dependencies
+              content = content.replace('dev_dependencies:', 'dev_dependencies:\n  flutter_launcher_icons: ^0.13.1')
+              # إضافة قسم الأيقونات في نهاية الملف
+              content += '\n\nflutter_launcher_icons:\n  android: "launcher_icon"\n  image_path: "assets/images/icon.png"\n  min_sdk_android: 21\n'
+          else:
+              print('⚠️ flutter_launcher_icons موجود بالفعل')
           
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
-          "
+          
+          print('✅ تم تعديل pubspec.yaml بنجاح')
+          EOF
+          
+          # عرض محتوى الملف للتأكد (للتشخيص)
+          echo "=== pubspec.yaml بعد التعديل ==="
+          cat ${{ env.PROJECT_DIR }}/pubspec.yaml
+          
           rm -f pubspec.lock
           mkdir -p assets/images assets/icons
 
       - name: Inject Permissions
         run: |
           cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os
-          path = 'android/app/src/main/AndroidManifest.xml'
-          if os.path.exists(path):
-              with open(path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-              
-              # يمكنك إكمال كود تعديل المانيفست هنا إذا لزم الأمر بشكل آمن
-          "
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          
+          if [ -f "$MANIFEST" ]; then
+            # استخدام sed بدلاً من Python لتجنب مشاكل YAML
+            if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
+              sed -i '/<manifest/a\
+    <uses-permission android:name="android.permission.INTERNET" />\
+    <uses-permission android:name="android.permission.CAMERA" />\
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' "$MANIFEST"
+              echo "✅ تم إضافة الأذونات"
+            else
+              echo "ℹ️ الأذونات موجودة بالفعل"
+            fi
+          else
+            echo "⚠️ ملف AndroidManifest.xml غير موجود"
+          fi
+
+      - name: Set up Java Development Kit (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.22.0'
+
+      - name: Install dependencies
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter pub get
+
+      - name: Generate Launcher Icons
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          # إنشاء مجلد وأيقونة وهمية
+          mkdir -p assets/images
+          if [ ! -f "assets/images/icon.png" ]; then
+            echo "Creating dummy icon..."
+            # إنشاء أيقونة PNG بيضاء 512x512
+            convert -size 512x512 xc:white assets/images/icon.png 2>/dev/null || \
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" | base64 -d > assets/images/icon.png
+          fi
+          # تشغيل أداة الأيقونات
+          flutter pub run flutter_launcher_icons || echo "⚠️ Icon generation skipped or failed"
+
+      - name: Build Android APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
