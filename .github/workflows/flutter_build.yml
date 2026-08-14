@@ -27,7 +27,7 @@ jobs:
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
 
-          # 1. حل تعارضات الإصدارات الرئيسية (Hive Generator, Riverpod, Nearby Connections)
+          # 1. حل تعارضات الإصدارات
           content = content.replace('nearby_connections: ^5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('nearby_connections: 5.0.0', 'nearby_connections: ^4.2.0')
           content = content.replace('flutter_riverpod: ^3.0.0', 'flutter_riverpod: ^2.5.1')
@@ -35,7 +35,7 @@ jobs:
           content = content.replace('build_runner: ^2.4.8', 'build_runner: ^2.4.6')
           content = content.replace('build_runner: 2.4.8', 'build_runner: ^2.4.6')
 
-          # 2. إضافة المكتبات المفقودة إن لم تكن موجودة
+          # 2. إضافة المكتبات المفقودة
           deps_to_add = []
           for lib, ver in [
               ('qr_flutter', '^4.1.0'),
@@ -58,6 +58,30 @@ jobs:
           "
           rm -f pubspec.lock
           mkdir -p assets/images assets/icons
+
+      - name: Force Android Compile SDK 36
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob, re
+
+          # تحديث compileSdkVersion و targetSdkVersion إلى 36 لجميع ملفات build.gradle
+          for file_path in glob.glob('**/build.gradle*', recursive=True):
+              try:
+                  with open(file_path, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  new_content = re.sub(r'compileSdk\s+\d+', 'compileSdk 36', content)
+                  new_content = re.sub(r'compileSdkVersion\s+\d+', 'compileSdkVersion 36', new_content)
+                  new_content = re.sub(r'targetSdkVersion\s+\d+', 'targetSdkVersion 36', new_content)
+                  new_content = re.sub(r'targetSdk\s+\d+', 'targetSdk 36', new_content)
+                  
+                  if new_content != content:
+                      with open(file_path, 'w', encoding='utf-8') as f:
+                          f.write(new_content)
+              except Exception as e:
+                  pass
+          "
 
       - name: Inject Permissions
         run: |
