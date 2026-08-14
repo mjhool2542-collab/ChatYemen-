@@ -43,11 +43,11 @@ jobs:
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST" ] && ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
             sed -i '/<manifest/a\
-        <uses-permission android:name="android.permission.INTERNET" />\
-        <uses-permission android:name="android.permission.CAMERA" />\
-        <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\
-        <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
-        <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' "$MANIFEST"
+            <uses-permission android:name="android.permission.INTERNET" />\
+            <uses-permission android:name="android.permission.CAMERA" />\
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\
+            <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\
+            <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />' "$MANIFEST"
           fi
 
       - uses: actions/setup-java@v4
@@ -57,18 +57,11 @@ jobs:
         with: {channel: 'stable', flutter-version: '3.22.0'}
 
       - name: Set minSdk 21
-        run: |
-          if [ -f "${{ env.PROJECT_DIR }}/android/app/build.gradle" ]; then
-            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' ${{ env.PROJECT_DIR }}/android/app/build.gradle
-          fi
+        run: sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' ${{ env.PROJECT_DIR }}/android/app/build.gradle
 
       - run: cd ${{ env.PROJECT_DIR }} && flutter pub get
-
-      - name: Generate launcher icons
-        run: cd ${{ env.PROJECT_DIR }} && flutter pub run flutter_launcher_icons || true
-
-      - name: Build APK
-        run: cd ${{ env.PROJECT_DIR }} && flutter build apk --release --no-tree-shake-icons
+      - run: cd ${{ env.PROJECT_DIR }} && flutter pub run flutter_launcher_icons
+      - run: cd ${{ env.PROJECT_DIR }} && flutter build apk --release
 
       - uses: actions/upload-artifact@v4
         with:
