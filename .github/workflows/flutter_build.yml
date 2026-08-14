@@ -26,13 +26,24 @@ jobs:
           python3 -c "
           with open('pubspec.yaml', 'r', encoding='utf-8') as f:
               content = f.read()
-          
-          if 'qr_flutter' not in content:
-              content = content.replace('dependencies:', 'dependencies:\n  qr_flutter: ^4.1.0\n  mobile_scanner: ^5.0.0\n  permission_handler: ^11.3.0\n  network_info_plus: ^5.0.1')
-          
+
+          deps_to_add = []
+          for lib, ver in [
+              ('qr_flutter', '^4.1.0'),
+              ('mobile_scanner', '^5.0.0'),
+              ('permission_handler', '^11.3.0'),
+              ('network_info_plus', '^5.0.1')
+          ]:
+              if lib not in content:
+                  deps_to_add.append(f'  {lib}: {ver}')
+
+          if deps_to_add:
+              new_deps = 'dependencies:\n' + '\n'.join(deps_to_add)
+              content = content.replace('dependencies:', new_deps)
+
           if 'flutter_launcher_icons:' not in content:
               content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: \"launcher_icon\"\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n'
-          
+
           with open('pubspec.yaml', 'w', encoding='utf-8') as f:
               f.write(content)
           "
