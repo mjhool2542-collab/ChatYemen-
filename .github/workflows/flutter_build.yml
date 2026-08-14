@@ -40,21 +40,8 @@ jobs:
               if pkg not in content:
                   content = content.replace('dependencies:', f'dependencies:\n  {d}')
 
-          # إعداد الأيقونة لتكون التكيفية (Adaptive) وتتناسب مع كل أبعاد الشاشات
-          icon_config = '''
-
-dev_dependencies:
-  flutter_launcher_icons: ^0.13.1
-
-flutter_launcher_icons:
-  android: \"launcher_icon\"
-  image_path: \"assets/images/icon.png\"
-  min_sdk_android: 21
-  adaptive_icon_background: \"#FFFFFF\"
-  adaptive_icon_foreground: \"assets/images/icon.png\"
-'''
           if 'flutter_launcher_icons:' not in content:
-              content += icon_config
+              content += '\ndev_dependencies:\n  flutter_launcher_icons: ^0.13.1\n\nflutter_launcher_icons:\n  android: true\n  image_path: \"assets/images/icon.png\"\n  min_sdk_android: 21\n  adaptive_icon_background: \"#FFFFFF\"\n  adaptive_icon_foreground: \"assets/images/icon.png\"\n'
 
           if 'dependency_overrides:' not in content:
               content += '\ndependency_overrides:\n  file_picker: ^8.0.0\n  flutter_plugin_android_lifecycle: ^2.0.17\n'
@@ -234,7 +221,6 @@ flutter_launcher_icons:
                           pass
           "
 
-          # توليد أحجام الأيقونات لجميع دقات الشاشات (mdpi, hdpi, xhdpi, xxhdpi, xxxhdpi)
           dart run flutter_launcher_icons || true
           flutter build apk --release --no-tree-shake-icons
 
