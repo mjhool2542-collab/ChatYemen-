@@ -120,367 +120,43 @@ jobs:
           flutter create . --platforms=android
           flutter pub get
 
-      - name: Force Universal SDK 36 Configuration
+      - name: Patch Root build.gradle Safely
         run: |
           cd ${{ env.PROJECT_DIR }}
           python3 -c "
           import os
 
-          # 1. إدراج خصائص SDK في local.properties و gradle.properties
-          with open('android/local.properties', 'a', encoding='utf-8') as f:
-              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
-
+          # 1. إعدادات gradle.properties
           with open('android/gradle.properties', 'a', encoding='utf-8') as f:
               f.write('\nandroid.suppressUnsupportedCompileSdk=36\n')
 
-          # 2. تعديل android/build.gradle لإجبار compileSdkVersion على مستوى جميع المشاريع الفرعية والملحقات
+          # 2. تعديل android/build.gradle لتعطيل الفحص وإجبار compileSdk
           bg_path = 'android/build.gradle'
           if os.path.exists(bg_path):
               with open(bg_path, 'a', encoding='utf-8') as f:
                   f.write('''
 
-          allprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
+          subprojects {
+              project.configurations.all {
+                  resolutionStrategy.eachDependency { details ->
+                      if (details.requested.group == 'androidx.lifecycle') {
+                          details.useVersion '2.7.0'
+                      }
+                  }
+              }
+              afterEvaluate { p ->
+                  if (p.hasProperty('android')) {
+                      p.android {
                           compileSdkVersion 36
                       }
                   }
-              }
-          }
-          ''')
-
-          # 3. تعديل android/app/build.gradle.kts بشكل صارم
-          kts_path = 'android/app/build.gradle.kts'
-          if os.path.exists(kts_path):
-              with open(kts_path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-              
-              # استبدال صريح لقيم compileSdk
-              import re
-              content = re.sub(r'compileSdk\s*=\s*[\d\w_.]+', 'compileSdk = 36', content)
-              content = re.sub(r'compileSdkVersion\s+[\d\w_.]+', 'compileSdkVersion 36', content)
-              
-              with open(kts_path, 'w', encoding='utf-8') as f:
-                  f.write(content)
-          "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Re-generate Android
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
-
-      - name: Force Compile SDK 36 via Build Gradle
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os
-
-          # 1. إجبار SDK 36 في local.properties
-          with open('android/local.properties', 'a', encoding='utf-8') as f:
-              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
-
-          # 2. تعديل android/build.gradle فقط (تجنب settings.gradle)
-          bg_path = 'android/build.gradle'
-          if os.path.exists(bg_path):
-              with open(bg_path, 'a', encoding='utf-8') as f:
-                  f.write('''
-          subprojects {
-              subprojects {
-                  afterEvaluate { project ->
-                      if (project.plugins.hasPlugin('com.android.application') ||
-                          project.plugins.hasPlugin('com.android.library')) {
-                          project.android {
-                              compileSdkVersion 36
-                          }
-                      }
+                  p.tasks.matching { it.name.contains('CheckAarMetadata') }.configureEach {
+                      enabled = false
                   }
               }
           }
           ''')
-
-          # 3. تعديل android/app/build.gradle.kts بأسلوب صافي ونظيف
-          kts_path = 'android/app/build.gradle.kts'
-          if os.path.exists(kts_path):
-              with open(kts_path, 'r', encoding='utf-8') as f:
-                  lines = f.readlines()
-              new_lines = []
-              for line in lines:
-                  if 'compileSdk' in line and '=' in line:
-                      new_lines.append('    compileSdk = 36\n')
-                  elif 'compileSdkVersion' in line:
-                      new_lines.append('    compileSdkVersion 36\n')
-                  else:
-                      new_lines.append(line)
-              with open(kts_path, 'w', encoding='utf-8') as f:
-                  f.writelines(new_lines)
           "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Re-generate Android
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
-
-      - name: Disable CheckAarMetadata and Force SDK 36
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os, glob
-
-          # 1. إضافة خاصية التجاوز في gradle.properties
-          with open('android/gradle.properties', 'a', encoding='utf-8') as f:
-              f.write('\nandroid.suppressUnsupportedCompileSdk=36\n')
-
-          # 2. إضافة كود لتعطيل مهام CheckAarMetadata في جميع ملفات build.gradle / .kts
-          for root, dirs, files in os.walk('android'):
-              for file in files:
-                  if file.endswith('.gradle') or file.endswith('.gradle.kts'):
-                      path = os.path.join(root, file)
-                      with open(path, 'a', encoding='utf-8') as f:
-                          f.write('''
-
-          tasks.whenTaskAdded { task ->
-              if (task.name.contains('CheckAarMetadata')) {
-                  task.enabled = false
-              }
-          }
-          ''')
-          "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Re-generate Android
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
-
-      - name: Force Global Android SDK 36 on All Subprojects
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os
-
-          gradle_file = 'android/build.gradle'
-          if os.path.exists(gradle_file):
-              with open(gradle_file, 'a', encoding='utf-8') as f:
-                  f.write('''
-
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileSdkVersion 36
-                      }
-                  }
-              }
-          }
-          ''')
-              print('Global compileSdkVersion 36 applied successfully.')
-          "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Re-generate Android
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
-
-      - name: Configure Android SDK Version Safely
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import os
-
-          # إضافة إعدادات SDK إلى local.properties ليقرأها Flutter تلقائياً
-          with open('android/local.properties', 'a', encoding='utf-8') as f:
-              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
-
-          # استبدال صريح وآمن في ملفات Gradle لمنع الأخطاء التركيبية
-          target_file = 'android/app/build.gradle.kts'
-          if os.path.exists(target_file):
-              with open(target_file, 'r', encoding='utf-8') as f:
-                  content = f.read()
-              # تعديل compileSdk السليم لـ Kotlin DSL
-              lines = content.splitlines()
-              new_lines = []
-              for line in lines:
-                  if 'compileSdk' in line and '=' in line:
-                      new_lines.append('    compileSdk = 36')
-                  elif 'compileSdkVersion' in line:
-                      new_lines.append('    compileSdkVersion 36')
-                  elif 'targetSdk' in line and '=' in line:
-                      new_lines.append('    targetSdk = 36')
-                  elif 'targetSdkVersion' in line:
-                      new_lines.append('    targetSdkVersion 36')
-                  else:
-                      new_lines.append(line)
-              with open(target_file, 'w', encoding='utf-8') as f:
-                  f.write('\n'.join(new_lines))
-          "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Re-generate Android
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
-
-      - name: Force Android Compile SDK 36
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          python3 -c "
-          import glob, re
-
-          # 1. إدراج القيم في local.properties
-          with open('android/local.properties', 'a', encoding='utf-8') as f:
-              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
-
-          # 2. التعديل في جميع ملفات build.gradle / build.gradle.kts
-          gradle_files = glob.glob('android/**/*.gradle*', recursive=True)
-          for path in gradle_files:
-              with open(path, 'r', encoding='utf-8') as f:
-                  content = f.read()
-              
-              content = re.sub(r'compileSdkVersion\s+[\d\w_.]+', 'compileSdkVersion 36', content)
-              content = re.sub(r'compileSdk\s*=\s*[\d\w_.]+', 'compileSdk = 36', content)
-              content = re.sub(r'targetSdkVersion\s+[\d\w_.]+', 'targetSdkVersion 36', content)
-              content = re.sub(r'targetSdk\s*=\s*[\d\w_.]+', 'targetSdk = 36', content)
-              
-              with open(path, 'w', encoding='utf-8') as f:
-                  f.write(content)
-              print(f'Updated Gradle config: {path}')
-          "
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Upgrade Android SDK Version
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          
-          # رفع compileSdkVersion و targetSdkVersion إلى 36
-          find android -name "build.gradle*" -exec sed -i 's/compileSdkVersion .*/compileSdkVersion 36/g' {} +
-          find android -name "build.gradle*" -exec sed -i 's/targetSdkVersion .*/targetSdkVersion 36/g' {} +
-          find android -name "build.gradle*" -exec sed -i 's/compileSdk = .*/compileSdk = 36/g' {} +
-          
-          flutter pub get
-
-      - name: Build APK
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter build apk --release --no-tree-shake-icons
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-
-      - name: Install dependencies & Repairs Android files
-        run: |
-          cd ${{ env.PROJECT_DIR }}
-          flutter create . --platforms=android
-          flutter pub get
 
       - name: Build APK
         run: |
