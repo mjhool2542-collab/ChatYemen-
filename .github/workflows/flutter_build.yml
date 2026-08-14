@@ -20,14 +20,12 @@ jobs:
           PROJ_DIR=$(find extracted_project -name "pubspec.yaml" -exec dirname {} \;)
           echo "PROJECT_DIR=$PROJ_DIR" >> $GITHUB_ENV
 
-      - name: Fix pubspec dependencies & Missing assets
+      - name: Fix pubspec dependencies & Assets
         run: |
           cd ${{ env.PROJECT_DIR }}
           sed -i 's/nearby_connections: ^5.0.0/nearby_connections: any/g' pubspec.yaml
           sed -i 's/flutter_riverpod: .*/flutter_riverpod: any/g' pubspec.yaml
           rm -f pubspec.lock
-
-          # إنشاء المجلدات المطلوبة لتفادي خطأ assets
           mkdir -p assets/images assets/icons
 
       - name: Rewrite encryption_service.dart cleanly
@@ -108,6 +106,56 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies & Re-generate Android
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter create . --platforms=android
+          flutter pub get
+
+      - name: Force Android Compile SDK 36
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          python3 -c "
+          import glob, re
+
+          # 1. إدراج القيم في local.properties
+          with open('android/local.properties', 'a', encoding='utf-8') as f:
+              f.write('\nflutter.compileSdkVersion=36\nflutter.targetSdkVersion=36\n')
+
+          # 2. التعديل في جميع ملفات build.gradle / build.gradle.kts
+          gradle_files = glob.glob('android/**/*.gradle*', recursive=True)
+          for path in gradle_files:
+              with open(path, 'r', encoding='utf-8') as f:
+                  content = f.read()
+              
+              content = re.sub(r'compileSdkVersion\s+[\d\w_.]+', 'compileSdkVersion 36', content)
+              content = re.sub(r'compileSdk\s*=\s*[\d\w_.]+', 'compileSdk = 36', content)
+              content = re.sub(r'targetSdkVersion\s+[\d\w_.]+', 'targetSdkVersion 36', content)
+              content = re.sub(r'targetSdk\s*=\s*[\d\w_.]+', 'targetSdk = 36', content)
+              
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print(f'Updated Gradle config: {path}')
+          "
+
+      - name: Build APK
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           distribution: 'zulu'
           java-version: '17'
 
