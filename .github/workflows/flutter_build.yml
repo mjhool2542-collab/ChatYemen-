@@ -38,16 +38,19 @@ jobs:
               with open(path, 'r', encoding='utf-8') as f:
                   code = f.read()
 
-              # 1. استبدال Constructor القديم بـ AesCbc V2 مع الحفاظ على الأقواس الأصلية
+              # 1. استبدال AesCbcWithPkcs7() بـ AesCbc.with256bits(macAlgorithm: Hmac.sha256()) بدون أقواس مضاعفة
               code = re.sub(r'AesCbcWithPkcs7\s*\(\s*\)', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
               code = re.sub(r'AesCbcWithPkcs7', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())', code)
 
-              # 2. استبدال Nonce بـ SecretKey مع الحفاظ على القيمة داخل القوس
+              # 2. تنظيف الأقواس المزدوجة الناتجة إن وجدت
+              code = code.replace('AesCbc.with256bits(macAlgorithm: Hmac.sha256())()', 'AesCbc.with256bits(macAlgorithm: Hmac.sha256())')
+
+              # 3. استبدال Nonce بـ SecretKey
               code = re.sub(r'\bNonce\s*\(', 'SecretKey(', code)
 
               with open(path, 'w', encoding='utf-8') as f:
                   f.write(code)
-              print(f'Patched: {path}')
+              print(f'Patched successfully: {path}')
           "
 
       - name: Set up Java
